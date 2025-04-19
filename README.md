@@ -1,6 +1,6 @@
 # Audio Stem Separator & Visualizer
 
-A Streamlit application that allows users to separate audio tracks into individual stems (vocals, drums, bass, and other) using Demucs, and visualize the waveforms for each stem.
+A Streamlit application that allows users to separate audio tracks into individual stems (vocals, drums, bass, and other) using Demucs, and visualize the waveforms for each stem. Features advanced visualizations inspired by nature, noir, and dance aesthetics.
 
 ## Features
 
@@ -9,6 +9,13 @@ A Streamlit application that allows users to separate audio tracks into individu
 - Visualize waveforms for the original audio and each stem
 - Create custom mixes by selecting which stems to include
 - Download the custom mix as a WAV file
+- Generate advanced visualizations with different themes:
+  - Nature-inspired visualizations with organic flowing shapes
+  - Noir-style high-contrast visualizations
+  - Dance-inspired dynamic visualizations
+  - Epic combined visualizations that represent all stems
+- Interactive explorations with real-time controls
+- Create animated GIFs from audio visualizations
 
 ## Requirements
 
@@ -19,6 +26,7 @@ A Streamlit application that allows users to separate audio tracks into individu
 - Matplotlib
 - PyTorch
 - Demucs (for audio separation)
+- Plotly (for interactive visualizations)
 
 ## Installation
 
@@ -33,6 +41,17 @@ pip install -r requirements.txt
 ```bash
 streamlit run src/app.py
 ```
+
+## Visualization Modes
+
+The app offers several visualization modes that are especially suited for music like Mycota's "I am a General":
+
+1. **Nature Theme**: Organic flowing visualizations that represent the natural evolution of sound
+2. **Noir Theme**: High-contrast visualizations with sharp lines, ideal for jazz fusion elements
+3. **Dance Theme**: Dynamic visualizations that pulse with the rhythm, emphasizing movement
+4. **Epic Combined**: A layered visualization showing all stems in a cohesive presentation
+
+Each stem (vocals, drums, bass, other) is represented with different visual elements and colors to create a comprehensive visual experience of the music.
 
 ## Models
 

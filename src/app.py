@@ -6,6 +6,7 @@ This app allows users to:
 2. Process them into stems using Demucs
 3. Play the original and separated stems
 4. Visualize waveforms for each stem
+5. Create advanced visualizations inspired by nature, noir, and dance themes
 """
 
 import os
@@ -19,6 +20,16 @@ import torch
 import time
 from pathlib import Path
 from separation import separate_audio, mix_stems
+from visualizer import (
+    extract_features, 
+    nature_visualization, 
+    noir_visualization, 
+    dance_visualization, 
+    epic_combined_visualization,
+    create_animated_gif,
+    generate_plotly_visualizations
+)
+import base64
 
 # Configure page
 st.set_page_config(
@@ -200,8 +211,8 @@ def main():
             if stem_paths:  # Check if we have valid stem paths
                 st.subheader("Separated Stems")
                 
-                # Create tabs for original and stems
-                tabs = ["Original"] + list(stem_paths.keys())
+                # Create tabs for original, stems, and visualizations
+                tabs = ["Original", "Stems", "Visualizations", "Advanced Visuals"]
                 selected_tab = st.tabs(tabs)
                 
                 # Original tab
@@ -215,27 +226,145 @@ def main():
                     st.write("Waveform:")
                     st.pyplot(plot_waveform(input_path, "Original Audio"))
                 
-                # Stem tabs
-                for i, stem_name in enumerate(stem_paths.keys(), 1):
-                    with selected_tab[i]:
-                        st.write(f"{stem_name.capitalize()} audio")
-                        try:
-                            st.audio(stem_paths[stem_name], format="audio/wav")
-                        except Exception as e:
-                            st.warning(f"Could not play {stem_name} stem: {e}")
+                # Stems tab
+                with selected_tab[1]:
+                    # Create columns for each stem
+                    stem_cols = st.columns(len(stem_paths))
+                    
+                    # Display each stem in its own column
+                    for i, (stem_name, stem_path) in enumerate(stem_paths.items()):
+                        with stem_cols[i]:
+                            st.subheader(stem_name.capitalize())
+                            try:
+                                st.audio(stem_path, format="audio/wav")
+                            except Exception as e:
+                                st.warning(f"Could not play {stem_name} stem: {e}")
+                            
+                            # Use different colors for different stems
+                            colors = {
+                                "vocals": "#ff9900",
+                                "drums": "#ff0000",
+                                "bass": "#0000ff",
+                                "other": "#00cc00"
+                            }
+                            color = colors.get(stem_name, "#1f77b4")
+                            
+                            st.pyplot(plot_waveform(stem_path, f"{stem_name.capitalize()} Waveform", color))
+                
+                # Basic Visualizations tab
+                with selected_tab[2]:
+                    st.subheader("Stem Visualizations")
+                    
+                    # Extract features for each stem
+                    if "stem_features" not in st.session_state:
+                        with st.spinner("Extracting audio features for visualization..."):
+                            stem_features = {}
+                            # Extract features for original audio
+                            stem_features["original"] = extract_features(input_path)
+                            
+                            # Extract features for each stem
+                            for stem_name, stem_path in stem_paths.items():
+                                stem_features[stem_name] = extract_features(stem_path)
+                            
+                            st.session_state["stem_features"] = stem_features
+                    else:
+                        stem_features = st.session_state["stem_features"]
+                    
+                    # Let user select visualization type
+                    viz_type = st.selectbox(
+                        "Select visualization style",
+                        ["Nature", "Noir", "Dance", "Epic Combined"]
+                    )
+                    
+                    # Let user select stem to visualize
+                    stem_to_viz = st.selectbox(
+                        "Select stem to visualize",
+                        ["original"] + list(stem_paths.keys())
+                    )
+                    
+                    # Create visualization based on selection
+                    with st.spinner("Generating visualization..."):
+                        if viz_type == "Nature":
+                            fig = nature_visualization(stem_features[stem_to_viz])
+                            st.pyplot(fig)
+                        elif viz_type == "Noir":
+                            fig = noir_visualization(stem_features[stem_to_viz])
+                            st.pyplot(fig)
+                        elif viz_type == "Dance":
+                            fig = dance_visualization(stem_features[stem_to_viz])
+                            st.pyplot(fig)
+                        elif viz_type == "Epic Combined":
+                            # Epic combined uses all stems
+                            fig = epic_combined_visualization(stem_features)
+                            st.pyplot(fig)
+                
+                # Advanced Visuals tab
+                with selected_tab[3]:
+                    st.subheader("MYCOTA - \"I am a General\" - Advanced Visualizations")
+                    
+                    # Extract features if not already done
+                    if "stem_features" not in st.session_state:
+                        with st.spinner("Extracting audio features for visualization..."):
+                            stem_features = {}
+                            # Extract features for original audio
+                            stem_features["original"] = extract_features(input_path)
+                            
+                            # Extract features for each stem
+                            for stem_name, stem_path in stem_paths.items():
+                                stem_features[stem_name] = extract_features(stem_path)
+                            
+                            st.session_state["stem_features"] = stem_features
+                    else:
+                        stem_features = st.session_state["stem_features"]
+                    
+                    # Create animated visualization
+                    st.subheader("Interactive Stem Explorer")
+                    
+                    # Generate or load Plotly visualization
+                    if "plotly_fig" not in st.session_state:
+                        with st.spinner("Generating interactive visualization..."):
+                            plotly_fig = generate_plotly_visualizations(stem_features)
+                            st.session_state["plotly_fig"] = plotly_fig
+                    else:
+                        plotly_fig = st.session_state["plotly_fig"]
+                    
+                    # Display Plotly visualization
+                    st.plotly_chart(plotly_fig, use_container_width=True)
+                    
+                    # Animated GIF visualization (computationally expensive)
+                    st.subheader("Animated Stem Visualization")
+                    
+                    if st.button("Generate Animated Visualization"):
+                        with st.spinner("Generating animation (this may take a minute)..."):
+                            try:
+                                gif_data = create_animated_gif(stem_features, duration=10, fps=5)
+                                st.session_state["gif_data"] = gif_data
+                                st.success("Animation generated successfully!")
+                            except Exception as e:
+                                st.error(f"Error generating animation: {e}")
+                    
+                    if "gif_data" in st.session_state:
+                        st.markdown(
+                            f'<img src="data:image/gif;base64,{st.session_state["gif_data"]}" alt="Animated Visualization">',
+                            unsafe_allow_html=True
+                        )
                         
-                        st.write("Waveform:")
-                        
-                        # Use different colors for different stems
-                        colors = {
-                            "vocals": "#ff9900",
-                            "drums": "#ff0000",
-                            "bass": "#0000ff",
-                            "other": "#00cc00"
-                        }
-                        color = colors.get(stem_name, "#1f77b4")
-                        
-                        st.pyplot(plot_waveform(stem_paths[stem_name], f"{stem_name.capitalize()} Waveform", color))
+                        # Save option
+                        if st.button("Save Animation as GIF"):
+                            # Create a temporary file
+                            with open("mycota_visualization.gif", "wb") as f:
+                                f.write(base64.b64decode(st.session_state["gif_data"]))
+                            
+                            st.success("Animation saved as mycota_visualization.gif")
+                            
+                            # Add download button
+                            with open("mycota_visualization.gif", "rb") as f:
+                                st.download_button(
+                                    label="Download GIF",
+                                    data=f,
+                                    file_name="mycota_visualization.gif",
+                                    mime="image/gif"
+                                )
                 
                 # Custom mix section
                 st.subheader("Create Custom Mix")
