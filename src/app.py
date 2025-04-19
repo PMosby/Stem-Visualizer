@@ -20,6 +20,8 @@ import torch
 import time
 import json
 import base64
+import hashlib  # For creating cache keys
+import shutil   # For file operations
 from pathlib import Path
 from separation import separate_audio, mix_stems
 
@@ -29,6 +31,70 @@ st.set_page_config(
     page_icon="🎵",
     layout="wide"
 )
+
+# Add a cache directory for development
+DEV_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cache", "stems")
+os.makedirs(DEV_CACHE_DIR, exist_ok=True)
+
+# Caching functions
+@st.cache_data
+def cached_separate_audio(input_path, output_dir, model_name, device):
+    """Cache the stem separation to avoid reprocessing during development"""
+    return separate_audio(input_path, output_dir, model_name, device)
+
+def get_cached_stems(input_path, model_name):
+    """
+    Try to get cached stems for the given input file and model.
+    
+    Returns:
+        Dictionary of stem paths if cached, None otherwise
+    """
+    # Create a unique key based on the input file and model
+    file_name = os.path.basename(input_path)
+    file_size = os.path.getsize(input_path)
+    
+    # Simple cache key based on filename, size and model
+    cache_key = f"{file_name}_{file_size}_{model_name}"
+    cache_key_hash = hashlib.md5(cache_key.encode()).hexdigest()
+    
+    # Check if we have this in cache
+    cache_dir = os.path.join(DEV_CACHE_DIR, cache_key_hash)
+    
+    if os.path.exists(cache_dir):
+        st.info("Using cached stems for faster development")
+        
+        # Build dictionary of stem paths
+        stem_paths = {}
+        for stem_name in ["vocals", "drums", "bass", "other"]:
+            stem_path = os.path.join(cache_dir, f"{stem_name}.wav")
+            if os.path.exists(stem_path):
+                stem_paths[stem_name] = stem_path
+        
+        if len(stem_paths) > 0:
+            return stem_paths
+    
+    return None
+
+def save_to_cache(input_path, model_name, stem_paths):
+    """Save stems to cache for faster development"""
+    # Create a unique key based on the input file and model
+    file_name = os.path.basename(input_path)
+    file_size = os.path.getsize(input_path)
+    
+    # Simple cache key based on filename, size and model
+    cache_key = f"{file_name}_{file_size}_{model_name}"
+    cache_key_hash = hashlib.md5(cache_key.encode()).hexdigest()
+    
+    # Create cache directory
+    cache_dir = os.path.join(DEV_CACHE_DIR, cache_key_hash)
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    # Copy stems to cache
+    for stem_name, stem_path in stem_paths.items():
+        cache_path = os.path.join(cache_dir, f"{stem_name}.wav")
+        shutil.copy2(stem_path, cache_path)
+    
+    st.success(f"Stems cached for faster development")
 
 # Define functions for visualization
 def plot_waveform(audio_path, title, color="#1f77b4"):
@@ -216,45 +282,64 @@ def main():
         estimated_time = file_size_mb * 2  # rough estimate: 2 seconds per MB
         st.info(f"Estimated processing time: {estimated_time:.0f} seconds (may vary based on your system)")
         
+        # Add "Use Cached Stems" option for development
+        use_cached = st.checkbox("Use cached stems if available (for development)", value=True)
+        
         if st.button("Separate Stems"):
-            # Create a progress bar
-            progress_bar = st.progress(0, text="Initializing...")
-            status_text = st.empty()
+            # Try to get cached stems first if enabled
+            cached_stems = None
+            if use_cached:
+                cached_stems = get_cached_stems(input_path, model_options[model_name])
             
-            try:
-                # Track start time
-                start_time = time.time()
+            if cached_stems:
+                # Use cached stems
+                stem_paths = cached_stems
+                st.session_state["stem_paths"] = stem_paths
+                st.success(f"Using cached stems for faster development!")
+                st.experimental_rerun()
+            else:
+                # No cached stems, do the normal processing
+                # Create a progress bar
+                progress_bar = st.progress(0, text="Initializing...")
+                status_text = st.empty()
                 
-                # Update status
-                status_text.text("Loading model...")
-                progress_bar.progress(10, text="Loading Demucs model...")
-                
-                # Use our separate_audio function
-                status_text.text("Processing audio...")
-                
-                # Process in stages to update progress
-                stem_paths = separate_audio(
-                    input_path, 
-                    output_dir, 
-                    model_options[model_name], 
-                    device
-                )
-                
-                # Update with completion
-                elapsed_time = time.time() - start_time
-                progress_bar.progress(100, text="Processing complete!")
-                status_text.text(f"Completed in {elapsed_time:.1f} seconds.")
-                
-                if stem_paths:
-                    st.session_state["stem_paths"] = stem_paths
-                    st.success(f"Stems separated successfully in {elapsed_time:.1f} seconds!")
-                    st.experimental_rerun()
-                else:
-                    st.error("Separation failed. Check the logs for more information.")
-            except Exception as e:
-                st.error(f"Error during separation: {str(e)}")
-                st.info("Try a different model or file format if the issue persists.")
-                progress_bar.empty()
+                try:
+                    # Track start time
+                    start_time = time.time()
+                    
+                    # Update status
+                    status_text.text("Loading model...")
+                    progress_bar.progress(10, text="Loading Demucs model...")
+                    
+                    # Use our cached separate_audio function
+                    status_text.text("Processing audio...")
+                    
+                    # Process in stages to update progress
+                    stem_paths = cached_separate_audio(
+                        input_path, 
+                        output_dir, 
+                        model_options[model_name], 
+                        device
+                    )
+                    
+                    # Save to cache for future use
+                    save_to_cache(input_path, model_options[model_name], stem_paths)
+                    
+                    # Update with completion
+                    elapsed_time = time.time() - start_time
+                    progress_bar.progress(100, text="Processing complete!")
+                    status_text.text(f"Completed in {elapsed_time:.1f} seconds.")
+                    
+                    if stem_paths:
+                        st.session_state["stem_paths"] = stem_paths
+                        st.success(f"Stems separated successfully in {elapsed_time:.1f} seconds!")
+                        st.experimental_rerun()
+                    else:
+                        st.error("Separation failed. Check the logs for more information.")
+                except Exception as e:
+                    st.error(f"Error during separation: {str(e)}")
+                    st.info("Try a different model or file format if the issue persists.")
+                    progress_bar.empty()
         
         # Display stems if available
         if "stem_paths" in st.session_state:
