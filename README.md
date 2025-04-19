@@ -1,6 +1,6 @@
 # Audio Stem Separator & Visualizer
 
-A Streamlit application that allows users to separate audio tracks into individual stems (vocals, drums, bass, and other) using Demucs, and visualize the waveforms for each stem. Features advanced visualizations inspired by nature, noir, and dance aesthetics.
+A Streamlit application that allows users to separate audio tracks into individual stems (vocals, drums, bass, and other) using Demucs, and visualize the waveforms for each stem. Features advanced visualizations inspired by nature, noir, and dance aesthetics, along with an immersive Three.js experience that synchronizes visuals with the audio playback.
 
 ## Features
 
@@ -16,6 +16,11 @@ A Streamlit application that allows users to separate audio tracks into individu
   - Epic combined visualizations that represent all stems
 - Interactive explorations with real-time controls
 - Create animated GIFs from audio visualizations
+- Immersive Three.js experience with:
+  - Real-time audio-reactive 3D visualizations
+  - Different visual elements for each stem
+  - Playback controls (play/pause)
+  - Synchronized visuals that respond to audio frequencies
 
 ## Requirements
 
@@ -50,6 +55,11 @@ The app offers several visualization modes that are especially suited for music 
 2. **Noir Theme**: High-contrast visualizations with sharp lines, ideal for jazz fusion elements
 3. **Dance Theme**: Dynamic visualizations that pulse with the rhythm, emphasizing movement
 4. **Epic Combined**: A layered visualization showing all stems in a cohesive presentation
+5. **Immersive Three.js Experience**: A full-screen audio-reactive 3D visualization with:
+   - Flowing particle systems for vocals (nature-inspired)
+   - Geometric cube patterns for drums (noir-inspired)
+   - Rippling wave surfaces for bass (dance-inspired)
+   - Orbital sphere systems for other instruments (epic fusion style)
 
 Each stem (vocals, drums, bass, other) is represented with different visual elements and colors to create a comprehensive visual experience of the music.
 

@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mycota - "I am a General" - Three.js Visualization</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        canvas { 
+            display: block; 
+        }
+        #overlay {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: white;
+            z-index: 100;
+        }
+        #controls {
+            margin-bottom: 10px;
+        }
+        button {
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 8px 16px;
+            margin: 0 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: rgba(50,50,50,0.7);
+        }
+        #songInfo {
+            font-size: 16px;
+            margin-bottom: 8px;
+            text-shadow: 0 0 3px #000;
+        }
+        #timeDisplay {
+            font-size: 14px;
+            text-shadow: 0 0 3px #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <div id="songInfo">MYCOTA - "I am a General"</div>
+        <div id="controls">
+            <button id="playBtn">Play</button>
+            <button id="pauseBtn">Pause</button>
+        </div>
+        <div id="timeDisplay">0:00 / 0:00</div>
+    </div>
+
+    <!-- Audio elements for each stem -->
+    <audio id="vocalsAudio" preload="auto"></audio>
+    <audio id="drumsAudio" preload="auto"></audio>
+    <audio id="bassAudio" preload="auto"></audio>
+    <audio id="otherAudio" preload="auto"></audio>
+    <audio id="originalAudio" preload="auto"></audio>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // DOM elements
+        const playBtn = document.getElementById('playBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const timeDisplay = document.getElementById('timeDisplay');
+        
+        // Audio elements
+        const vocalsAudio = document.getElementById('vocalsAudio');
+        const drumsAudio = document.getElementById('drumsAudio');
+        const bassAudio = document.getElementById('bassAudio');
+        const otherAudio = document.getElementById('otherAudio');
+        const originalAudio = document.getElementById('originalAudio');
+        
+        let audioContext;
+        let audioSources = {};
+        let analyzers = {};
+        let dataArrays = {};
+        
+        // Three.js variables
+        let scene, camera, renderer;
+        let natureGroup, noirGroup, danceGroup;
+        let vocalsVisuals, drumsVisuals, bassVisuals, otherVisuals;
+        
+        // Animation variables
+        let animationId;
+        let isPlaying = false;
+        let currentTime = 0;
+        let duration = 0;
+        
+        // Setup for audio visualization
+        function setupAudioContext() {
+            // Create audio context
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Setup audio analyzers for each stem
+            ['vocals', 'drums', 'bass', 'other'].forEach(stem => {
+                const audioElement = document.getElementById(`${stem}Audio`);
+                
+                // Create source and analyzer
+                const source = audioContext.createMediaElementSource(audioElement);
+                const analyzer = audioContext.createAnalyser();
+                analyzer.fftSize = 256;
+                
+                // Connect nodes: source -> analyzer -> destination
+                source.connect(analyzer);
+                analyzer.connect(audioContext.destination);
+                
+                // Create data array for analyzer
+                const bufferLength = analyzer.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                // Store references
+                audioSources[stem] = source;
+                analyzers[stem] = analyzer;
+                dataArrays[stem] = dataArray;
+            });
+        }
+        
+        // Initialize Three.js scene
+        function initThreeJS() {
+            // Create scene
+            scene = new THREE.Scene();
+            
+            // Setup camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 30;
+            
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x000000, 1);
+            document.body.appendChild(renderer.domElement);
+            
+            // Create groups for different visual styles
+            natureGroup = new THREE.Group();
+            noirGroup = new THREE.Group();
+            danceGroup = new THREE.Group();
+            
+            scene.add(natureGroup);
+            scene.add(noirGroup);
+            scene.add(danceGroup);
+            
+            // Create visualization elements for each stem
+            createVocalsVisuals();
+            createDrumsVisuals();
+            createBassVisuals();
+            createOtherVisuals();
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize, false);
+        }
+        
+        // Create vocals visualizations
+        function createVocalsVisuals() {
+            // Nature-inspired vocals visual: flowing particles
+            const vocalsParticles = new THREE.Group();
+            
+            // Create particle system
+            const particleCount = 1000;
+            const particleGeometry = new THREE.BufferGeometry();
+            const particlePositions = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const i3 = i * 3;
+                particlePositions[i3] = (Math.random() - 0.5) * 50;
+                particlePositions[i3 + 1] = (Math.random() - 0.5) * 50;
+                particlePositions[i3 + 2] = (Math.random() - 0.5) * 50;
+            }
+            
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+            
+            // Create particle material
+            const particleMaterial = new THREE.PointsMaterial({
+                color: 0xFF5F5F,
+                size: 0.3,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            // Create particle system
+            const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+            vocalsParticles.add(particleSystem);
+            
+            natureGroup.add(vocalsParticles);
+            vocalsVisuals = vocalsParticles;
+        }
+        
+        // Create drums visualizations
+        function createDrumsVisuals() {
+            // Noir-inspired drums visual: geometric shapes
+            const drumsShapes = new THREE.Group();
+            
+            // Create grid of cubes
+            const gridSize = 5;
+            const spacing = 2;
+            
+            for (let x = 0; x < gridSize; x++) {
+                for (let y = 0; y < gridSize; y++) {
+                    const geometry = new THREE.BoxGeometry(1, 1, 1);
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0x5F5FFF,
+                        transparent: true,
+                        opacity: 0.8,
+                        shininess: 30
+                    });
+                    
+                    const cube = new THREE.Mesh(geometry, material);
+                    cube.position.x = (x - gridSize / 2) * spacing;
+                    cube.position.y = (y - gridSize / 2) * spacing;
+                    cube.position.z = 0;
+                    
+                    drumsShapes.add(cube);
+                }
+            }
+            
+            drumsShapes.position.x = -10;
+            noirGroup.add(drumsShapes);
+            drumsVisuals = drumsShapes;
+        }
+        
+        // Create bass visualizations
+        function createBassVisuals() {
+            // Dance-inspired bass visual: rippling waves
+            const bassWaves = new THREE.Group();
+            
+            // Create wave mesh
+            const waveGeometry = new THREE.PlaneGeometry(20, 20, 20, 20);
+            const waveMaterial = new THREE.MeshPhongMaterial({
+                color: 0x5FFF5F,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            
+            const waveMesh = new THREE.Mesh(waveGeometry, waveMaterial);
+            waveMesh.rotation.x = Math.PI / 2;
+            
+            bassWaves.add(waveMesh);
+            bassWaves.position.x = 10;
+            
+            danceGroup.add(bassWaves);
+            bassVisuals = bassWaves;
+        }
+        
+        // Create "other" instrument visualizations
+        function createOtherVisuals() {
+            // Epic combined visual: rotating spheres
+            const otherSpheres = new THREE.Group();
+            
+            // Create nested rotating rings of spheres
+            const ringCount = 3;
+            const spheresPerRing = 8;
+            
+            for (let ring = 0; ring < ringCount; ring++) {
+                const ringGroup = new THREE.Group();
+                const radius = 5 + ring * 3;
+                
+                for (let i = 0; i < spheresPerRing; i++) {
+                    const angle = (i / spheresPerRing) * Math.PI * 2;
+                    const geometry = new THREE.SphereGeometry(0.5, 12, 12);
+                    const material = new THREE.MeshPhongMaterial({
+                        color: 0xFFFF5F,
+                        transparent: true,
+                        opacity: 0.7,
+                        shininess: 30
+                    });
+                    
+                    const sphere = new THREE.Mesh(geometry, material);
+                    sphere.position.x = Math.sin(angle) * radius;
+                    sphere.position.z = Math.cos(angle) * radius;
+                    
+                    ringGroup.add(sphere);
+                }
+                
+                // Tilt each ring differently
+                ringGroup.rotation.x = ring * 0.3;
+                otherSpheres.add(ringGroup);
+            }
+            
+            otherSpheres.position.y = -10;
+            scene.add(otherSpheres);
+            otherVisuals = otherSpheres;
+        }
+        
+        // Animation loop
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+            
+            if (isPlaying) {
+                // Update audio data
+                updateAudioData();
+                
+                // Update visuals based on audio data
+                updateVisuals();
+                
+                // Update time display
+                updateTimeDisplay();
+            }
+            
+            // Add constant animation regardless of audio
+            animateScene();
+            
+            // Render scene
+            renderer.render(scene, camera);
+        }
+        
+        // Update audio data from analyzers
+        function updateAudioData() {
+            for (const stem in analyzers) {
+                analyzers[stem].getByteFrequencyData(dataArrays[stem]);
+            }
+        }
+        
+        // Update visualizations based on audio data
+        function updateVisuals() {
+            // Update vocals visualization
+            if (vocalsVisuals) {
+                const vocalsData = dataArrays['vocals'];
+                const particles = vocalsVisuals.children[0];
+                const positions = particles.geometry.attributes.position.array;
+                
+                for (let i = 0; i < positions.length / 3; i++) {
+                    const i3 = i * 3;
+                    // Use different frequency bands to affect different particles
+                    const freqBand = i % vocalsData.length;
+                    const value = vocalsData[freqBand] / 255;
+                    
+                    // Scale particle movement based on audio
+                    positions[i3 + 1] += (value * 0.2) - 0.1;
+                    
+                    // Keep particles within bounds
+                    if (positions[i3 + 1] > 25) positions[i3 + 1] = -25;
+                    if (positions[i3 + 1] < -25) positions[i3 + 1] = 25;
+                }
+                
+                particles.geometry.attributes.position.needsUpdate = true;
+                vocalsVisuals.rotation.y += 0.002;
+            }
+            
+            // Update drums visualization
+            if (drumsVisuals) {
+                const drumsData = dataArrays['drums'];
+                
+                drumsVisuals.children.forEach((cube, i) => {
+                    const freqBand = i % drumsData.length;
+                    const value = drumsData[freqBand] / 255;
+                    
+                    // Scale cube size based on audio
+                    cube.scale.set(1 + value, 1 + value, 1 + value * 3);
+                    
+                    // Change color intensity based on audio
+                    cube.material.opacity = 0.3 + value * 0.7;
+                });
+                
+                drumsVisuals.rotation.z += 0.005;
+            }
+            
+            // Update bass visualization
+            if (bassVisuals) {
+                const bassData = dataArrays['bass'];
+                const waveMesh = bassVisuals.children[0];
+                const positions = waveMesh.geometry.attributes.position.array;
+                
+                for (let i = 0; i < positions.length / 3; i++) {
+                    const i3 = i * 3;
+                    const x = positions[i3];
+                    const y = positions[i3 + 1];
+                    
+                    // Use primarily low frequencies for bass
+                    const freqBand = Math.min(i % 10, bassData.length - 1);
+                    const value = bassData[freqBand] / 255;
+                    
+                    // Create wave-like effect
+                    positions[i3 + 2] = Math.sin(x * 0.5 + currentTime) * Math.cos(y * 0.5 + currentTime) * value * 2;
+                }
+                
+                waveMesh.geometry.attributes.position.needsUpdate = true;
+                bassVisuals.rotation.z += 0.01;
+            }
+            
+            // Update other instruments visualization
+            if (otherVisuals) {
+                const otherData = dataArrays['other'];
+                
+                otherVisuals.children.forEach((ring, ringIndex) => {
+                    const ringSpeed = 0.01 + (ringIndex * 0.005);
+                    ring.rotation.y += ringSpeed;
+                    
+                    ring.children.forEach((sphere, i) => {
+                        const freqBand = (i + ringIndex * 5) % otherData.length;
+                        const value = otherData[freqBand] / 255;
+                        
+                        // Scale sphere size based on audio
+                        sphere.scale.set(0.5 + value * 2, 0.5 + value * 2, 0.5 + value * 2);
+                        
+                        // Change color brightness based on audio
+                        const hue = 0.15; // Yellow
+                        const sat = 1.0;
+                        const lightness = 0.5 + value * 0.5;
+                        
+                        sphere.material.color.setHSL(hue, sat, lightness);
+                    });
+                });
+                
+                otherVisuals.rotation.y += 0.005;
+            }
+        }
+        
+        // Constant animation independent of audio
+        function animateScene() {
+            // Rotate camera slightly for immersive effect
+            camera.position.x = Math.sin(currentTime * 0.05) * 3;
+            camera.position.y = Math.cos(currentTime * 0.05) * 3;
+            camera.lookAt(scene.position);
+            
+            // Increment time
+            currentTime += 0.01;
+        }
+        
+        // Handle window resize
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // Update time display
+        function updateTimeDisplay() {
+            if (!vocalsAudio) return;
+            
+            const currentTimeSeconds = vocalsAudio.currentTime;
+            const durationSeconds = vocalsAudio.duration || 0;
+            
+            // Format time as MM:SS
+            const formatTime = (time) => {
+                const minutes = Math.floor(time / 60);
+                const seconds = Math.floor(time % 60).toString().padStart(2, '0');
+                return `${minutes}:${seconds}`;
+            };
+            
+            timeDisplay.textContent = `${formatTime(currentTimeSeconds)} / ${formatTime(durationSeconds)}`;
+        }
+        
+        // Play all audio stems together
+        function playAll() {
+            if (!isPlaying) {
+                // Resume audio context if suspended
+                if (audioContext && audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                
+                // Play all audio elements
+                vocalsAudio.play();
+                drumsAudio.play();
+                bassAudio.play();
+                otherAudio.play();
+                
+                isPlaying = true;
+            }
+        }
+        
+        // Pause all audio stems
+        function pauseAll() {
+            if (isPlaying) {
+                // Pause all audio elements
+                vocalsAudio.pause();
+                drumsAudio.pause();
+                bassAudio.pause();
+                otherAudio.pause();
+                
+                isPlaying = false;
+            }
+        }
+        
+        // Event listeners
+        playBtn.addEventListener('click', playAll);
+        pauseBtn.addEventListener('click', pauseAll);
+        
+        // Initialize visualization
+        function init() {
+            setupAudioContext();
+            initThreeJS();
+            animate();
+        }
+        
+        // Set audio sources with paths received from Streamlit
+        function setStemSources(vocalsSrc, drumsSrc, bassSrc, otherSrc, originalSrc) {
+            vocalsAudio.src = vocalsSrc;
+            drumsAudio.src = drumsSrc;
+            bassAudio.src = bassSrc;
+            otherAudio.src = otherSrc;
+            originalAudio.src = originalSrc;
+            
+            // Ensure all audio elements play together synchronized
+            vocalsAudio.oncanplaythrough = function() {
+                duration = vocalsAudio.duration;
+                updateTimeDisplay();
+            };
+        }
+        
+        // Initialize on window load
+        window.onload = init;
+        
+        // Expose functions to be called from Streamlit
+        window.stemPlayer = {
+            setStemSources: setStemSources,
+            play: playAll,
+            pause: pauseAll
+        };
+    </script>
+</body>
+</html> 

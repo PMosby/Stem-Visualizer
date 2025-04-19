@@ -7,6 +7,7 @@ This app allows users to:
 3. Play the original and separated stems
 4. Visualize waveforms for each stem
 5. Create advanced visualizations inspired by nature, noir, and dance themes
+6. Experience immersive Three.js visualizations synced with audio playback
 """
 
 import os
@@ -18,6 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import time
+import base64
 from pathlib import Path
 from separation import separate_audio, mix_stems
 from visualizer import (
@@ -29,7 +31,13 @@ from visualizer import (
     create_animated_gif,
     generate_plotly_visualizations
 )
-import base64
+
+# Helper function to convert audio file to base64
+def get_audio_base64(file_path):
+    """Convert audio file to base64 for embedding in HTML"""
+    with open(file_path, "rb") as f:
+        audio_bytes = f.read()
+    return base64.b64encode(audio_bytes).decode('utf-8')
 
 # Configure page
 st.set_page_config(
@@ -212,7 +220,7 @@ def main():
                 st.subheader("Separated Stems")
                 
                 # Create tabs for original, stems, and visualizations
-                tabs = ["Original", "Stems", "Visualizations", "Advanced Visuals"]
+                tabs = ["Original", "Stems", "Visualizations", "Advanced Visuals", "Immersive Experience"]
                 selected_tab = st.tabs(tabs)
                 
                 # Original tab
@@ -411,6 +419,54 @@ def main():
                             file_name="custom_mix.wav",
                             mime="audio/wav"
                         )
+
+                # Immersive Experience tab with Three.js visualization
+                with selected_tab[4]:
+                    st.subheader("MYCOTA - \"I am a General\" - Immersive Experience")
+                    
+                    # Read the HTML template
+                    html_template_path = os.path.join(os.path.dirname(__file__), "visualization_template.html")
+                    if os.path.exists(html_template_path):
+                        with open(html_template_path, "r") as f:
+                            html_template = f.read()
+                        
+                        # Create absolute URLs for the audio files
+                        vocals_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['vocals'])}"
+                        drums_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['drums'])}"
+                        bass_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['bass'])}"
+                        other_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['other'])}"
+                        original_url = f"data:audio/wav;base64,{get_audio_base64(input_path)}"
+                        
+                        # Inject JavaScript to set the audio sources
+                        inject_js = f"""
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {{
+                            if (window.stemPlayer) {{
+                                window.stemPlayer.setStemSources(
+                                    "{vocals_url}",
+                                    "{drums_url}",
+                                    "{bass_url}",
+                                    "{other_url}",
+                                    "{original_url}"
+                                );
+                            }}
+                        }});
+                        </script>
+                        """
+                        
+                        # Inject the script into the HTML template
+                        html_with_script = html_template.replace("</body>", f"{inject_js}</body>")
+                        
+                        # Display the Three.js visualization in an iframe
+                        st.components.v1.html(
+                            html_with_script,
+                            height=700,
+                            scrolling=False
+                        )
+                        
+                        st.info("The visualization above uses Three.js to create an immersive audio-reactive experience for 'I am a General'. Each stem controls different visual elements that react to the audio frequencies in real-time.")
+                    else:
+                        st.error("Visualization template not found. Make sure 'visualization_template.html' exists in the src directory.")
 
 if __name__ == "__main__":
     main() 
