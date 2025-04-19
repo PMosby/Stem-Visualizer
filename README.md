@@ -23,8 +23,8 @@ A Streamlit application that allows users to separate audio tracks into individu
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/Im_A_General_Visualizer.git
-cd Im_A_General_Visualizer
+git clone https://github.com/PMosby/Stem-Separator.git
+cd Stem-Separator
 pip install -r requirements.txt
 ```
 
