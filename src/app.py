@@ -6,8 +6,7 @@ This app allows users to:
 2. Process them into stems using Demucs
 3. Play the original and separated stems
 4. Visualize waveforms for each stem
-5. Create advanced visualizations inspired by nature, noir, and dance themes
-6. Experience immersive Three.js visualizations synced with audio playback
+5. Generate 3D visualizations with audio reactivity
 """
 
 import os
@@ -19,25 +18,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import time
+import json
 import base64
 from pathlib import Path
 from separation import separate_audio, mix_stems
-from visualizer import (
-    extract_features, 
-    nature_visualization, 
-    noir_visualization, 
-    dance_visualization, 
-    epic_combined_visualization,
-    create_animated_gif,
-    generate_plotly_visualizations
-)
-
-# Helper function to convert audio file to base64
-def get_audio_base64(file_path):
-    """Convert audio file to base64 for embedding in HTML"""
-    with open(file_path, "rb") as f:
-        audio_bytes = f.read()
-    return base64.b64encode(audio_bytes).decode('utf-8')
 
 # Configure page
 st.set_page_config(
@@ -79,6 +63,65 @@ def create_custom_mix(stem_paths, selected_stems):
     except Exception as e:
         st.error(f"Error creating custom mix: {e}")
         return None
+
+def create_3d_visualization(stem_paths):
+    """
+    Create a 3D visualization of audio stems using Three.js
+    
+    Args:
+        stem_paths: Dictionary mapping stem names to file paths
+    """
+    # Get the base URL for Streamlit
+    # For local development this will typically be http://localhost:8501
+    if not stem_paths:
+        return
+    
+    # Create URLs for each stem that can be accessed by JavaScript
+    stem_urls = {}
+    
+    for stem_name, path in stem_paths.items():
+        try:
+            # Create a unique filename for each stem
+            filename = f"{stem_name}.wav"
+            # Read the file and encode it
+            with open(path, "rb") as file:
+                audio_bytes = file.read()
+            
+            # Create a data URL for the audio file
+            audio_b64 = base64.b64encode(audio_bytes).decode()
+            stem_urls[stem_name] = f"data:audio/wav;base64,{audio_b64}"
+        except Exception as e:
+            st.error(f"Error creating data URL for {stem_name}: {e}")
+    
+    # Read the HTML template
+    html_path = os.path.join(os.path.dirname(__file__), "web", "index.html")
+    
+    try:
+        with open(html_path, "r") as f:
+            html_content = f.read()
+        
+        # Replace the placeholder with actual stem paths
+        stem_paths_json = json.dumps(stem_urls)
+        html_content = html_content.replace("const stemPaths = {};", f"const stemPaths = {stem_paths_json};")
+        
+        # Embed the CSS directly
+        css_path = os.path.join(os.path.dirname(__file__), "web", "css", "style.css")
+        with open(css_path, "r") as f:
+            css_content = f.read()
+        
+        html_content = html_content.replace('<link rel="stylesheet" href="css/style.css">', f'<style>{css_content}</style>')
+        
+        # Embed the JS directly
+        js_path = os.path.join(os.path.dirname(__file__), "web", "js", "visualizer.js")
+        with open(js_path, "r") as f:
+            js_content = f.read()
+        
+        html_content = html_content.replace('<script src="js/visualizer.js"></script>', f'<script>{js_content}</script>')
+        
+        # Display using st.components.html
+        st.components.v1.html(html_content, height=700)
+    except Exception as e:
+        st.error(f"Error creating 3D visualization: {e}")
 
 def show_model_explanation():
     """Display information about the different models"""
@@ -219,8 +262,8 @@ def main():
             if stem_paths:  # Check if we have valid stem paths
                 st.subheader("Separated Stems")
                 
-                # Create tabs for original, stems, and visualizations
-                tabs = ["Original", "Stems", "Visualizations", "Advanced Visuals", "Immersive Experience"]
+                # Create tabs for original audio, stems, and 3D visualization
+                tabs = ["Original", "Stems", "3D Visualization"]
                 selected_tab = st.tabs(tabs)
                 
                 # Original tab
@@ -236,17 +279,20 @@ def main():
                 
                 # Stems tab
                 with selected_tab[1]:
-                    # Create columns for each stem
-                    stem_cols = st.columns(len(stem_paths))
+                    # Create sub-tabs for each stem
+                    stem_tabs = list(stem_paths.keys())
+                    stem_selected_tab = st.tabs(stem_tabs)
                     
-                    # Display each stem in its own column
-                    for i, (stem_name, stem_path) in enumerate(stem_paths.items()):
-                        with stem_cols[i]:
-                            st.subheader(stem_name.capitalize())
+                    # Display each stem in its tab
+                    for i, stem_name in enumerate(stem_paths.keys()):
+                        with stem_selected_tab[i]:
+                            st.write(f"{stem_name.capitalize()} audio")
                             try:
-                                st.audio(stem_path, format="audio/wav")
+                                st.audio(stem_paths[stem_name], format="audio/wav")
                             except Exception as e:
                                 st.warning(f"Could not play {stem_name} stem: {e}")
+                            
+                            st.write("Waveform:")
                             
                             # Use different colors for different stems
                             colors = {
@@ -257,122 +303,15 @@ def main():
                             }
                             color = colors.get(stem_name, "#1f77b4")
                             
-                            st.pyplot(plot_waveform(stem_path, f"{stem_name.capitalize()} Waveform", color))
+                            st.pyplot(plot_waveform(stem_paths[stem_name], f"{stem_name.capitalize()} Waveform", color))
                 
-                # Basic Visualizations tab
+                # 3D Visualization tab
                 with selected_tab[2]:
-                    st.subheader("Stem Visualizations")
+                    st.write("3D Audio Visualization")
+                    st.write("Interact with the visualization below. Use the play button to start/stop the audio and visualization.")
                     
-                    # Extract features for each stem
-                    if "stem_features" not in st.session_state:
-                        with st.spinner("Extracting audio features for visualization..."):
-                            stem_features = {}
-                            # Extract features for original audio
-                            stem_features["original"] = extract_features(input_path)
-                            
-                            # Extract features for each stem
-                            for stem_name, stem_path in stem_paths.items():
-                                stem_features[stem_name] = extract_features(stem_path)
-                            
-                            st.session_state["stem_features"] = stem_features
-                    else:
-                        stem_features = st.session_state["stem_features"]
-                    
-                    # Let user select visualization type
-                    viz_type = st.selectbox(
-                        "Select visualization style",
-                        ["Nature", "Noir", "Dance", "Epic Combined"]
-                    )
-                    
-                    # Let user select stem to visualize
-                    stem_to_viz = st.selectbox(
-                        "Select stem to visualize",
-                        ["original"] + list(stem_paths.keys())
-                    )
-                    
-                    # Create visualization based on selection
-                    with st.spinner("Generating visualization..."):
-                        if viz_type == "Nature":
-                            fig = nature_visualization(stem_features[stem_to_viz])
-                            st.pyplot(fig)
-                        elif viz_type == "Noir":
-                            fig = noir_visualization(stem_features[stem_to_viz])
-                            st.pyplot(fig)
-                        elif viz_type == "Dance":
-                            fig = dance_visualization(stem_features[stem_to_viz])
-                            st.pyplot(fig)
-                        elif viz_type == "Epic Combined":
-                            # Epic combined uses all stems
-                            fig = epic_combined_visualization(stem_features)
-                            st.pyplot(fig)
-                
-                # Advanced Visuals tab
-                with selected_tab[3]:
-                    st.subheader("MYCOTA - \"I am a General\" - Advanced Visualizations")
-                    
-                    # Extract features if not already done
-                    if "stem_features" not in st.session_state:
-                        with st.spinner("Extracting audio features for visualization..."):
-                            stem_features = {}
-                            # Extract features for original audio
-                            stem_features["original"] = extract_features(input_path)
-                            
-                            # Extract features for each stem
-                            for stem_name, stem_path in stem_paths.items():
-                                stem_features[stem_name] = extract_features(stem_path)
-                            
-                            st.session_state["stem_features"] = stem_features
-                    else:
-                        stem_features = st.session_state["stem_features"]
-                    
-                    # Create animated visualization
-                    st.subheader("Interactive Stem Explorer")
-                    
-                    # Generate or load Plotly visualization
-                    if "plotly_fig" not in st.session_state:
-                        with st.spinner("Generating interactive visualization..."):
-                            plotly_fig = generate_plotly_visualizations(stem_features)
-                            st.session_state["plotly_fig"] = plotly_fig
-                    else:
-                        plotly_fig = st.session_state["plotly_fig"]
-                    
-                    # Display Plotly visualization
-                    st.plotly_chart(plotly_fig, use_container_width=True)
-                    
-                    # Animated GIF visualization (computationally expensive)
-                    st.subheader("Animated Stem Visualization")
-                    
-                    if st.button("Generate Animated Visualization"):
-                        with st.spinner("Generating animation (this may take a minute)..."):
-                            try:
-                                gif_data = create_animated_gif(stem_features, duration=10, fps=5)
-                                st.session_state["gif_data"] = gif_data
-                                st.success("Animation generated successfully!")
-                            except Exception as e:
-                                st.error(f"Error generating animation: {e}")
-                    
-                    if "gif_data" in st.session_state:
-                        st.markdown(
-                            f'<img src="data:image/gif;base64,{st.session_state["gif_data"]}" alt="Animated Visualization">',
-                            unsafe_allow_html=True
-                        )
-                        
-                        # Save option
-                        if st.button("Save Animation as GIF"):
-                            # Create a temporary file
-                            with open("mycota_visualization.gif", "wb") as f:
-                                f.write(base64.b64decode(st.session_state["gif_data"]))
-                            
-                            st.success("Animation saved as mycota_visualization.gif")
-                            
-                            # Add download button
-                            with open("mycota_visualization.gif", "rb") as f:
-                                st.download_button(
-                                    label="Download GIF",
-                                    data=f,
-                                    file_name="mycota_visualization.gif",
-                                    mime="image/gif"
-                                )
+                    # Create the 3D visualization
+                    create_3d_visualization(stem_paths)
                 
                 # Custom mix section
                 st.subheader("Create Custom Mix")
@@ -419,54 +358,6 @@ def main():
                             file_name="custom_mix.wav",
                             mime="audio/wav"
                         )
-
-                # Immersive Experience tab with Three.js visualization
-                with selected_tab[4]:
-                    st.subheader("MYCOTA - \"I am a General\" - Immersive Experience")
-                    
-                    # Read the HTML template
-                    html_template_path = os.path.join(os.path.dirname(__file__), "visualization_template.html")
-                    if os.path.exists(html_template_path):
-                        with open(html_template_path, "r") as f:
-                            html_template = f.read()
-                        
-                        # Create absolute URLs for the audio files
-                        vocals_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['vocals'])}"
-                        drums_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['drums'])}"
-                        bass_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['bass'])}"
-                        other_url = f"data:audio/wav;base64,{get_audio_base64(stem_paths['other'])}"
-                        original_url = f"data:audio/wav;base64,{get_audio_base64(input_path)}"
-                        
-                        # Inject JavaScript to set the audio sources
-                        inject_js = f"""
-                        <script>
-                        document.addEventListener('DOMContentLoaded', function() {{
-                            if (window.stemPlayer) {{
-                                window.stemPlayer.setStemSources(
-                                    "{vocals_url}",
-                                    "{drums_url}",
-                                    "{bass_url}",
-                                    "{other_url}",
-                                    "{original_url}"
-                                );
-                            }}
-                        }});
-                        </script>
-                        """
-                        
-                        # Inject the script into the HTML template
-                        html_with_script = html_template.replace("</body>", f"{inject_js}</body>")
-                        
-                        # Display the Three.js visualization in an iframe
-                        st.components.v1.html(
-                            html_with_script,
-                            height=700,
-                            scrolling=False
-                        )
-                        
-                        st.info("The visualization above uses Three.js to create an immersive audio-reactive experience for 'I am a General'. Each stem controls different visual elements that react to the audio frequencies in real-time.")
-                    else:
-                        st.error("Visualization template not found. Make sure 'visualization_template.html' exists in the src directory.")
 
 if __name__ == "__main__":
     main() 

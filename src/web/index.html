@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stem Visualizer</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="visualization-container">
+        <div id="controls">
+            <button id="play-pause">Play</button>
+        </div>
+        <div id="canvas-container"></div>
+        <div class="stem-controls">
+            <label class="stem-toggle vocals">
+                <input type="checkbox" name="vocals" checked> Vocals
+            </label>
+            <label class="stem-toggle drums">
+                <input type="checkbox" name="drums" checked> Drums
+            </label>
+            <label class="stem-toggle bass">
+                <input type="checkbox" name="bass" checked> Bass
+            </label>
+            <label class="stem-toggle other">
+                <input type="checkbox" name="other" checked> Other
+            </label>
+        </div>
+    </div>
+    
+    <!-- This will be dynamically replaced with actual stem paths -->
+    <script>
+        const stemPaths = {};
+    </script>
+    <script src="js/visualizer.js"></script>
+</body>
+</html> 
