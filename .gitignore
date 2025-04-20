@@ -42,4 +42,8 @@ Thumbs.db
 
 # Temporary files created during audio processing
 /tmp/
-*.tmp 
+*.tmp
+
+# Custom temp and cache directories
+/temp/
+/cache/ 

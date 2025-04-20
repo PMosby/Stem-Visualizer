@@ -36,6 +36,30 @@ st.set_page_config(
 DEV_CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cache", "stems")
 os.makedirs(DEV_CACHE_DIR, exist_ok=True)
 
+# Create a custom temp directory with more space (in the project directory instead of system temp)
+TEMP_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "temp")
+os.makedirs(TEMP_DIR, exist_ok=True)
+
+# Add a function to clean up old temp files
+def cleanup_temp_files(max_age_hours=24):
+    """Clean up temporary files older than the specified age"""
+    try:
+        current_time = time.time()
+        max_age_seconds = max_age_hours * 60 * 60
+        
+        for root, dirs, files in os.walk(TEMP_DIR):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_age = current_time - os.path.getmtime(file_path)
+                
+                if file_age > max_age_seconds:
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"Failed to remove old temp file {file_path}: {e}")
+    except Exception as e:
+        print(f"Error during temp cleanup: {e}")
+
 # Caching functions
 @st.cache_data
 def cached_separate_audio(input_path, output_dir, model_name, device):
@@ -120,9 +144,12 @@ def create_custom_mix(stem_paths, selected_stems):
     if not selected_stems:
         return None
     
-    # Create a temporary file for the mix
+    # Create a temporary file for the mix in our custom temp directory
     try:
-        _, temp_file = tempfile.mkstemp(suffix=".wav")
+        # Create a unique filename for the mix
+        mix_filename = f"custom_mix_{int(time.time())}.wav"
+        # Use our custom temp directory
+        temp_file = os.path.join(TEMP_DIR, mix_filename)
         
         # Use our existing mix_stems function
         return mix_stems(stem_paths, temp_file, selected_stems)
@@ -224,6 +251,9 @@ def main():
     st.title("Audio Stem Separator & Visualizer")
     st.write("Upload an audio file to separate it into stems and visualize the waveforms.")
     
+    # Clean up old temp files on startup
+    cleanup_temp_files()
+    
     # Add model explanations
     show_model_explanation()
     show_format_info()
@@ -232,10 +262,13 @@ def main():
     uploaded_file = st.file_uploader("Choose an audio file", type=["mp3", "wav", "m4a", "ogg", "flac"])
     
     if uploaded_file is not None:
-        # Create temp directory for processing
-        temp_dir = tempfile.mkdtemp()
-        input_path = os.path.join(temp_dir, uploaded_file.name)
-        output_dir = os.path.join(temp_dir, "stems")
+        # Create a unique temp subdirectory for this session to avoid conflicts
+        session_id = str(int(time.time())) + "_" + str(hash(uploaded_file.name) % 10000)
+        session_temp_dir = os.path.join(TEMP_DIR, session_id)
+        os.makedirs(session_temp_dir, exist_ok=True)
+        
+        input_path = os.path.join(session_temp_dir, uploaded_file.name)
+        output_dir = os.path.join(session_temp_dir, "stems")
         
         # Save uploaded file to disk
         with open(input_path, "wb") as f:
