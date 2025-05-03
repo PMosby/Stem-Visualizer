@@ -7,4 +7,6 @@ demucs>=4.0.0
 torchaudio>=2.0.0
 tqdm>=4.65.0
 pillow>=9.0.0
-soundfile>=0.12.1 
+soundfile>=0.12.1
+resampy>=0.4.0
+audioread>=3.0.0 
