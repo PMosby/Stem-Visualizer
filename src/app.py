@@ -167,24 +167,140 @@ def create_3d_visualization(stem_paths):
     # Get the base URL for Streamlit
     # For local development this will typically be http://localhost:8501
     if not stem_paths:
+        st.error("No stem paths provided for visualization")
         return
+    
+    st.info(f"Creating visualization with {len(stem_paths)} stems: {', '.join(stem_paths.keys())}")
     
     # Create URLs for each stem that can be accessed by JavaScript
     stem_urls = {}
     
-    for stem_name, path in stem_paths.items():
-        try:
-            # Create a unique filename for each stem
-            filename = f"{stem_name}.wav"
-            # Read the file and encode it
-            with open(path, "rb") as file:
-                audio_bytes = file.read()
+    # Create a temp directory for downsampled audio
+    visualization_temp_dir = os.path.join(TEMP_DIR, "visualization")
+    os.makedirs(visualization_temp_dir, exist_ok=True)
+    
+    # Configurable parameters for downsampling - with higher quality
+    target_sr = 32000      # Improved sample rate (was 22050)
+    max_duration = 600     # Max duration in seconds (10 minutes)
+    chunk_size = 60        # Process in 60-second chunks if needed
+    
+    try:
+        for stem_name, path in stem_paths.items():
+            st.info(f"Processing {stem_name} stem from {path}")
             
-            # Create a data URL for the audio file
-            audio_b64 = base64.b64encode(audio_bytes).decode()
-            stem_urls[stem_name] = f"data:audio/wav;base64,{audio_b64}"
-        except Exception as e:
-            st.error(f"Error creating data URL for {stem_name}: {e}")
+            # Verify the file exists and is readable
+            if not os.path.exists(path):
+                st.error(f"Stem file not found: {path}")
+                continue
+            
+            # Check file size
+            file_size_mb = os.path.getsize(path) / (1024 * 1024)
+            st.info(f"Stem file size: {file_size_mb:.2f} MB")
+            
+            try:
+                # Get audio file info without loading the entire file
+                import soundfile as sf
+                file_info = sf.info(path)
+                original_duration = file_info.duration
+                original_sr = file_info.samplerate
+                
+                st.info(f"Original audio: {original_duration:.2f} seconds, {original_sr}Hz")
+                
+                # Create a plan for downsampling based on file size and duration
+                if original_duration > max_duration:
+                    st.warning(f"Audio is longer than {max_duration} seconds, will use chunked processing")
+                    use_chunking = True
+                else:
+                    use_chunking = False
+                
+                # Process in chunks or all at once
+                if use_chunking:
+                    # Calculate chunk parameters
+                    num_chunks = min(int(original_duration / chunk_size) + 1, 
+                                    int(max_duration / chunk_size))
+                    
+                    # Create a list to store chunk data
+                    all_audio = []
+                    
+                    # Process each chunk
+                    for i in range(num_chunks):
+                        chunk_start = i * chunk_size
+                        chunk_end = min((i + 1) * chunk_size, max_duration)
+                        
+                        if chunk_start >= max_duration:
+                            break
+                            
+                        st.info(f"Processing chunk {i+1}/{num_chunks}: {chunk_start}-{chunk_end} seconds")
+                        
+                        # Load just this chunk with target sample rate
+                        # Use quality settings for librosa.load
+                        y_chunk, sr = librosa.load(
+                            path, 
+                            sr=target_sr,
+                            offset=chunk_start,
+                            duration=chunk_end-chunk_start,
+                            res_type='kaiser_best'  # Higher quality resampling
+                        )
+                        
+                        # Add to our collection
+                        all_audio.append(y_chunk)
+                    
+                    # Combine chunks
+                    y = np.concatenate(all_audio)
+                    sr = target_sr
+                    st.info(f"Successfully processed {len(all_audio)} chunks")
+                    
+                else:
+                    # Load with target sample rate directly
+                    y, sr = librosa.load(path, sr=target_sr, res_type='kaiser_best')
+                
+                # Debug audio data
+                st.info(f"Loaded audio: {len(y)} samples, {sr}Hz, {len(y)/sr:.2f} seconds")
+                
+                # Further reduce audio size for very long songs by decimation
+                if len(y) > target_sr * max_duration:
+                    st.warning(f"Audio too long, reducing from {len(y)/sr:.2f}s to {max_duration}s")
+                    y = y[:int(target_sr * max_duration)]
+                
+                # Create temporary file for downsampled audio
+                temp_file_path = os.path.join(visualization_temp_dir, f"{stem_name}_downsampled.wav")
+                
+                # Save downsampled audio with higher quality settings
+                sf.write(temp_file_path, y, sr, format='WAV', subtype='PCM_16')
+                
+                # Report the new file size
+                downsampled_size_mb = os.path.getsize(temp_file_path) / (1024 * 1024)
+                st.info(f"Downsampled file saved to {temp_file_path} ({downsampled_size_mb:.2f} MB)")
+                
+                # Now read the much smaller file for the data URL
+                with open(temp_file_path, "rb") as file:
+                    audio_bytes = file.read()
+                
+                # Create a data URL for the audio file
+                audio_b64 = base64.b64encode(audio_bytes).decode()
+                data_url = f"data:audio/wav;base64,{audio_b64}"
+                stem_urls[stem_name] = data_url
+                
+                # Report the encoded size
+                encoded_size_mb = len(data_url) / (1024 * 1024)
+                st.info(f"Data URL created for {stem_name}, size: {encoded_size_mb:.2f} MB)")
+                
+            except Exception as e:
+                st.error(f"Error processing {stem_name} stem: {e}")
+                import traceback
+                st.error(f"Traceback: {traceback.format_exc()}")
+        
+    except Exception as e:
+        st.error(f"Error preparing audio for visualization: {e}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
+        st.info("Try using shorter audio files or enable chunking for visualization.")
+        return
+    
+    # Check if we have any valid stems after processing
+    if not stem_urls:
+        st.error("No stems could be processed for visualization")
+        return
     
     # Read the HTML template
     html_path = os.path.join(os.path.dirname(__file__), "web", "index.html")
@@ -195,6 +311,12 @@ def create_3d_visualization(stem_paths):
         
         # Replace the placeholder with actual stem paths
         stem_paths_json = json.dumps(stem_urls)
+        
+        # Add a hidden element with the stems data
+        stem_data_element = f'<div id="stem-paths" data-stems=\'{stem_paths_json}\' style="display:none;"></div>'
+        html_content = html_content.replace('<body>', f'<body>{stem_data_element}')
+        
+        # Also set the JavaScript variable for backward compatibility
         html_content = html_content.replace("const stemPaths = {};", f"const stemPaths = {stem_paths_json};")
         
         # Embed the CSS directly
@@ -211,10 +333,28 @@ def create_3d_visualization(stem_paths):
         
         html_content = html_content.replace('<script src="js/visualizer.js"></script>', f'<script>{js_content}</script>')
         
+        # Add loading indicator
+        html_content = html_content.replace('<div id="canvas-container"></div>', 
+                                          '<div id="canvas-container"></div><div id="loading-indicator">Loading audio stems...</div>')
+        
+        # Add custom configurations to pass to JavaScript
+        config = {
+            "audioConfig": {
+                "chunkMode": use_chunking,
+                "sampleRate": target_sr,
+                "duration": len(y)/sr if 'y' in locals() and 'sr' in locals() else 0
+            }
+        }
+        
+        config_json = json.dumps(config)
+        html_content = html_content.replace('</body>', f'<script>const appConfig = {config_json};</script></body>')
+        
         # Display using st.components.html
         st.components.v1.html(html_content, height=700)
     except Exception as e:
         st.error(f"Error creating 3D visualization: {e}")
+        import traceback
+        st.error(f"Traceback: {traceback.format_exc()}")
 
 def show_model_explanation():
     """Display information about the different models"""
@@ -328,8 +468,7 @@ def main():
                 # Use cached stems
                 stem_paths = cached_stems
                 st.session_state["stem_paths"] = stem_paths
-                st.success(f"Using cached stems for faster development!")
-                st.experimental_rerun()
+                st.success("Using cached stems for faster development!")
             else:
                 # No cached stems, do the normal processing
                 # Create a progress bar
@@ -366,9 +505,6 @@ def main():
                     if stem_paths:
                         st.session_state["stem_paths"] = stem_paths
                         st.success(f"Stems separated successfully in {elapsed_time:.1f} seconds!")
-                        st.experimental_rerun()
-                    else:
-                        st.error("Separation failed. Check the logs for more information.")
                 except Exception as e:
                     st.error(f"Error during separation: {str(e)}")
                     st.info("Try a different model or file format if the issue persists.")
@@ -451,11 +587,8 @@ def main():
                             if mix_file:
                                 st.session_state["mix_file"] = mix_file
                                 st.success("Custom mix created!")
-                                st.experimental_rerun()
                             else:
                                 st.error("Failed to create mix. Check the logs for details.")
-                    else:
-                        st.error("Please select at least one stem for mixing")
                 
                 # Display custom mix if available
                 if "mix_file" in st.session_state and os.path.exists(st.session_state["mix_file"]):
